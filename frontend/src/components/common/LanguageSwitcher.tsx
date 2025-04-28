@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 const LanguageSwitcher: React.FC = () => {
-  const { i18n, t } = useTranslation();
+  const { i18n } = useTranslation();
 
   const changeLanguage = (lng: string) => {
     i18n.changeLanguage(lng);
@@ -10,26 +10,28 @@ const LanguageSwitcher: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center space-x-2">
+    <div className="flex rounded-md overflow-hidden shadow-sm border border-gray-200">
       <button
-        className={`px-2 py-1 text-sm rounded-md transition-colors ${
+        className={`px-3 py-1.5 text-xs font-medium transition-colors ${
           i18n.language === 'kg'
             ? 'bg-primary text-white'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            : 'bg-white text-gray-700 hover:bg-gray-100'
         }`}
         onClick={() => changeLanguage('kg')}
+        aria-label="Switch to Kyrgyz language"
       >
-        {t('language.kg')}
+        KG
       </button>
       <button
-        className={`px-2 py-1 text-sm rounded-md transition-colors ${
+        className={`px-3 py-1.5 text-xs font-medium transition-colors ${
           i18n.language === 'ru'
             ? 'bg-primary text-white'
-            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            : 'bg-white text-gray-700 hover:bg-gray-100'
         }`}
         onClick={() => changeLanguage('ru')}
+        aria-label="Switch to Russian language"
       >
-        {t('language.ru')}
+        RU
       </button>
     </div>
   );

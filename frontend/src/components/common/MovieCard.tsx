@@ -9,7 +9,7 @@ interface MovieCardProps {
   animation?: string;
 }
 
-const MovieCard: React.FC<MovieCardProps> = ({ movie, animation = 'animate-fade-in' }) => {
+const MovieCard: React.FC<MovieCardProps> = ({ movie }) => {
   const { i18n, t } = useTranslation();
   const currentLanguage = i18n.language;
   const [isHovered, setIsHovered] = useState(false);
@@ -27,19 +27,22 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, animation = 'animate-fade-
   // Helper to get a label for foreign films
   const isForeignFilm = movie.language !== 'kg' && movie.language !== 'ru';
   
+  // Use poster_url if available, otherwise fall back to poster
+  const posterSrc = movie.poster_url || movie.poster;
+  
   return (
     <Link
       to={`/movies/${movie.id}`}
-      className={`block ${animation} movie-card`}
+      className="block movie-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="h-full flex flex-col">
         <div className="relative overflow-hidden group h-80">
           <img
-            src={movie.poster}
+            src={posterSrc}
             alt={currentLanguage === 'kg' ? movie.title_kg : movie.title_ru}
-            className={`w-full h-full object-cover transition-transform duration-700 ${isHovered ? 'scale-110' : 'scale-100'}`}
+            className="w-full h-full object-cover"
           />
           
           {/* Overlay with gradient */}
@@ -59,14 +62,14 @@ const MovieCard: React.FC<MovieCardProps> = ({ movie, animation = 'animate-fade-
           </div>
           
           {/* Trailer play button */}
-          <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
-            <div className="bg-primary/90 text-white rounded-full p-3 transform hover:scale-110 transition-transform">
+          <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ${isHovered ? 'opacity-100' : 'opacity-0'}`}>
+            <div className="bg-primary/90 text-white rounded-full p-3">
               <FaPlay size={24} />
             </div>
           </div>
           
           {/* Title area */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 transform transition-transform duration-300">
+          <div className="absolute bottom-0 left-0 right-0 p-4">
             <h3 className="text-white font-bold text-xl truncate">
               {currentLanguage === 'kg' ? movie.title_kg : movie.title_ru}
             </h3>

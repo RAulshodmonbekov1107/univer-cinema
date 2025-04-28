@@ -49,7 +49,29 @@
     "genres": "Жанры",
     "clearFilters": "Сбросить фильтры",
     "noResults": "Фильмы не найдены",
-    "tryAdjustingFilters": "Попробуйте изменить параметры фильтра"
+    "tryAdjustingFilters": "Попробуйте изменить параметры фильтра",
+    "watchTrailer": "Смотреть трейлер",
+    "bookTickets": "Купить билеты",
+    "about": "О фильме",
+    "showtimes": "Сеансы",
+    "reviews": "Отзывы",
+    "details": "Детали",
+    "ageRating": "Возрастной рейтинг",
+    "imdbRating": "Рейтинг IMDb",
+    "selectShowtime": "Выберите сеанс",
+    "availableShowtimes": "Доступные сеансы",
+    "standard": "Стандарт",
+    "vip": "VIP",
+    "soldOut": "Нет мест",
+    "userReviews": "Отзывы зрителей",
+    "writeReview": "Написать отзыв",
+    "notFound": "Фильм не найден",
+    "notFoundDesc": "К сожалению, фильм не найден. Пожалуйста, посмотрите другие фильмы.",
+    "browseMovies": "Смотреть фильмы",
+    "kyrgyz": "Кыргызский",
+    "russian": "Русский",
+    "original": "Оригинал",
+    "noShowtimesAvailable": "Нет доступных сеансов на эту дату"
   },
   "schedule": {
     "selectDate": "Выберите дату",
@@ -170,7 +192,15 @@
     "showYourTicket": "Пожалуйста, покажите этот билет при входе",
     "ticketFor": "Билет на",
     "theatreInfo": "Информация о кинотеатре",
-    "printTicket": "Распечатать билет"
+    "printTicket": "Распечатать билет",
+    "incompleteData": "Данные бронирования неполные. Пожалуйста, попробуйте снова или обратитесь в поддержку.",
+    "ticketPrice": "Цена билета",
+    "quantity": "Количество",
+    "total": "Итого",
+    "continueToSnacks": "Перейти к закускам",
+    "noSeatsSelected": "Места не выбраны",
+    "snackOrders": "Заказ закусок",
+    "snackTotal": "Стоимость закусок"
   },
   "user": {
     "profile": "Профиль",
@@ -201,7 +231,12 @@
     "bookTickets": "Забронировать билеты",
     "backToHome": "Вернуться на главную",
     "currency": "сом",
-    "readMore": "Читать далее"
+    "readMore": "Читать далее",
+    "Experience Movies Like Never Before": "Испытайте фильмы как никогда раньше",
+    "The ultimate cinema experience with the latest blockbusters and timeless classics.": "Лучший киноопыт с последними блокбастерами и вечной классикой.",
+    "Book Tickets": "Забронировать билеты",
+    "Watch Trailers": "Смотреть трейлеры",
+    "debug": "Отладочная информация"
   },
   "languages": {
     "kg": "Кыргызский",
@@ -232,5 +267,27 @@
   "errors": {
     "fillAllFields": "Пожалуйста, заполните все обязательные поля",
     "invalidEmail": "Пожалуйста, введите корректный адрес электронной почты"
+  },
+  "gallery": {
+    "title": "Галерея Нашего Кинотеатра",
+    "description": "Исследуйте моменты и воспоминания о событиях, премьерах и особых случаях в нашем кинотеатре",
+    "all": "Все",
+    "events": "События",
+    "premieres": "Премьеры",
+    "festivals": "Фестивали",
+    "workshops": "Мастер-классы",
+    "venue": "Помещения",
+    "technology": "Технологии",
+    "education": "Образование",
+    "noTitle": "Без названия",
+    "noItems": "Элементы галереи не найдены",
+    "event": "Событие",
+    "premiere": "Премьера",
+    "discussions": "Дискуссии",
+    "kids": "Детские события",
+    "meetings": "Встречи",
+    "retrospectives": "Ретроспективы",
+    "outdoor": "Мероприятия на открытом воздухе",
+    "movieShowtime": "Сеанс фильма в нашем кинотеатре"
   }
 } 

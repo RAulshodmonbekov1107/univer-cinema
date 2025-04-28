@@ -10,12 +10,15 @@ export interface Showtime {
   datetime: string;
   language: string;
   price: number;
+  format: string;
 }
 
 export interface SeatAvailability {
   showtime: Showtime;
   hall_layout: any;
   booked_seats: any[];
+  available_seats: number;
+  total_seats: number;
 }
 
 export const showtimeService = {

@@ -1,396 +1,616 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LoadingSpinner from '../common/LoadingSpinner';
-import { movieService, Movie } from '../../api/movieService';
-import { showtimeService, Showtime } from '../../api/showtimeService';
+import type { Movie } from '../../api/movieService';
+import type { Showtime } from '../../api/showtimeService';
+import { showtimeService } from '../../api/showtimeService';
 import './Booking.css';
+import { FaCalendarAlt, FaClock, FaTicketAlt, FaTimes } from 'react-icons/fa';
 
-// Set a consistent seat price
-const SEAT_PRICE = 180; // price in KGS (soms)
+// Constants
+const SEAT_PRICE = {
+  standard: 180,
+  vip: 320
+};
 
-// Define seat types
-type SeatType = 'standard' | 'premium' | 'vip';
+// Seat types
+type SeatType = 'standard' | 'vip' | 'unavailable';
 
-// Seat interface
-interface Seat {
-  id: string;
-  row: string;
-  number: number;
+interface SeatState {
+  row: number;
+  seatNumber: number;
+  selected: boolean;
   type: SeatType;
-  isAvailable: boolean;
+  price: number;
 }
 
-// BookingData is used when storing data for the confirmation page
-interface BookingData {
-  movieId: string;
-  movieTitle: string;
-  poster: string;
-  selectedSeats: Seat[];
+interface DebugInfo {
+  selectedShowtime: string;
+  selectedSeats: string[];
   totalPrice: number;
-  date: string;
-  time: string;
-  hall: string;
-  format: string;
-  showtimeId: string; // Added showtimeId for backend integration
+  timestamp: string;
 }
+
+// Export the SeatState type for other components to use
+export type Seat = SeatState;
 
 const Booking = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const currentLanguage = i18n.language;
+  
   const [loading, setLoading] = useState(true);
   const [movie, setMovie] = useState<Movie | null>(null);
-  const [seats, setSeats] = useState<Seat[]>([]);
-  const [selectedSeats, setSelectedSeats] = useState<Seat[]>([]);
+  const [seats, setSeats] = useState<SeatState[][]>([]);
+  const [selectedSeats, setSelectedSeats] = useState<SeatState[]>([]);
   const [showtime, setShowtime] = useState('');
   const [selectedShowtime, setSelectedShowtime] = useState<Showtime | null>(null);
   const [date, setDate] = useState('');
   const [hall, setHall] = useState('');
   const [format, setFormat] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+  const [debugMode, setDebugMode] = useState<boolean>(false);
 
-  // Get appropriate title and synopsis based on language
+  // Get appropriate title based on language
   const getMovieTitle = (movie: Movie) => {
     if (currentLanguage === 'kg') return movie.title_kg;
     if (currentLanguage === 'ru') return movie.title_ru;
     // Default to Kyrgyz if english title is not available 
     return movie.title_kg;
   };
-  
-  const getMovieSynopsis = (movie: Movie) => {
-    if (currentLanguage === 'kg') return movie.synopsis_kg;
-    if (currentLanguage === 'ru') return movie.synopsis_ru;
-    // Default to Kyrgyz if english synopsis is not available
-    return movie.synopsis_kg;
-  };
+
+  // Create mock seats for development/fallback
+  const createMockSeats = useCallback((hallName: string = 'Main Hall') => {
+    const mockSeats: SeatState[][] = [];
+    
+    // Keep 3 rows with 11 seats, but we'll add spacing for better distribution
+    const rowCount = 3; // 3 rows (A, B, C)
+    const seatsPerRow = 11; // 11 seats per row, for a total of 33 seats
+    
+    // Generate some unavailable seats randomly
+    const unavailableSeats = new Set<string>();
+    const unavailableCount = Math.floor(rowCount * seatsPerRow * 0.2); // Only make 20% unavailable
+    
+    for (let i = 0; i < unavailableCount; i++) {
+      const randomRow = Math.floor(Math.random() * rowCount) + 1;
+      const randomSeat = Math.floor(Math.random() * seatsPerRow) + 1;
+      unavailableSeats.add(`${randomRow}-${randomSeat}`);
+    }
+    
+    // Create the rows and seats
+    for (let row = 1; row <= rowCount; row++) {
+      const currentRow: SeatState[] = [];
+      
+      // For better distribution, we'll place seats with indices from 1 to 11
+      for (let seatNum = 1; seatNum <= seatsPerRow; seatNum++) {
+        const seatId = `${row}-${seatNum}`;
+        const isUnavailable = unavailableSeats.has(seatId);
+        
+        // Determine seat type - only standard or VIP seats
+        // VIP seats are in row C (last row)
+        let type: SeatType = 'standard';
+        if (row === rowCount) {
+          type = 'vip';
+        }
+        
+        // If seat is unavailable, mark it as such
+        if (isUnavailable) {
+          type = 'unavailable';
+        }
+        
+        currentRow.push({
+          row,
+          seatNumber: seatNum,
+          selected: false,
+          type,
+          price: type === 'unavailable' ? 0 : SEAT_PRICE[type]
+        });
+      }
+      
+      mockSeats.push(currentRow);
+    }
+    
+    return mockSeats;
+  }, []);
 
   // Fetch movie details and available seats
   useEffect(() => {
     setLoading(true);
+    setDebugInfo(null);
     
-    // Check if movie is available
+    // Clear any lingering snack data to prevent it from appearing in new bookings
+    localStorage.removeItem('cartItems');
+    
+    // Get showtime ID from URL parameters
     if (!id) {
+      console.error('No showtime ID provided');
       setError(t('booking.movieNotFound'));
       setLoading(false);
       return;
     }
+
+    // Try to get showtime data from localStorage
+    const savedShowtime = localStorage.getItem('selectedShowtime');
+    const savedParams = localStorage.getItem('currentShowtimeParams');
     
-    // Fetch movie details and showtimes
-    const fetchMovieAndShowtimes = async () => {
-      try {
-        // Get movie details
-        const movieDetails = await movieService.getMovie(id);
-        if (!movieDetails) {
-          setError(t('booking.movieNotFound'));
+    // Debug log
+    console.log('Booking: loaded selectedShowtime:', savedShowtime);
+    console.log('Booking: loaded currentShowtimeParams:', savedParams);
+    console.log('Booking: showtime ID from URL:', id);
+    setDebugInfo({
+      selectedShowtime: id,
+      selectedSeats: [],
+      totalPrice: 0,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (!savedShowtime || !savedParams) {
+      console.log('No saved showtime data found, attempting to fetch from API');
+      
+      // Fetch showtime data from API using the id from URL parameters
+      showtimeService.getShowtime(id)
+        .then(showtime => {
+          console.log('API returned showtime:', showtime);
+          // Process the showtime data
+          setShowtime(new Date(showtime.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          setDate(new Date(showtime.datetime).toLocaleDateString());
+          setHall(showtime.hall_name || 'Main Hall');
+          setFormat(showtime.format || '2D');
+          
+          // Create mock seats
+          const seatData = createMockSeats(showtime.hall_name || 'Main Hall');
+          setSeats(seatData);
+          
           setLoading(false);
-          return;
-        }
-        
-        setMovie(movieDetails);
-        
-        // Fetch showtimes for this movie
-        try {
-          const showtimeData = await showtimeService.getShowtimesByMovie(id);
-          console.log('Fetched showtimes:', showtimeData); // Log the showtime data
+        })
+        .catch(err => {
+          console.error('Error fetching showtime from API:', err);
+          console.log('Falling back to mock data');
           
-          if (showtimeData && showtimeData.length > 0) {
-            setSelectedShowtime(showtimeData[0]);
-            
-            // Extract time from the datetime
-            const datetime = new Date(showtimeData[0].datetime);
-            setShowtime(datetime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-            setDate(datetime.toLocaleDateString());
-            setHall(showtimeData[0].hall_name);
-            
-            // Get seat availability for the selected showtime
-            await fetchSeatsForShowtime(showtimeData[0].id);
-          } else {
-            // If no showtimes available, create mock data
-            console.log('No showtimes available, using mock data');
-            createMockSeats();
-            setShowtime('19:30');
-            setDate('2023-11-30');
-            setHall('Hall 1');
-            setFormat('2D');
-            
-            // Create a mock showtime with a valid UUID
-            const mockShowtime: Showtime = {
-              id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", // Valid UUID format
-              movie: movieDetails.id,
-              movie_title_kg: movieDetails.title_kg,
-              movie_title_ru: movieDetails.title_ru,
-              hall: "mock-hall-id",
-              hall_name: "Hall 1",
-              datetime: "2023-11-30T19:30:00Z",
-              language: "kg",
-              price: SEAT_PRICE
-            };
-            
-            setSelectedShowtime(mockShowtime);
-            console.log('Created mock showtime:', mockShowtime);
+          // Fallback: try to find the showtime in mockShowtimes
+          const mockShowtimesRaw = localStorage.getItem('mockShowtimes');
+          if (mockShowtimesRaw) {
+            const mockShowtimes = JSON.parse(mockShowtimesRaw);
+            const foundShowtime = mockShowtimes.find((s: any) => s.id === id);
+            if (foundShowtime) {
+              const mockMovie = {
+                id: foundShowtime.movie,
+                title_kg: foundShowtime.movie_title_kg,
+                title_ru: foundShowtime.movie_title_ru,
+                synopsis_kg: 'Кыргызстан тарыхындагы эң маанилүү окуялар жөнүндө тасма.',
+                synopsis_ru: 'Фильм о важнейших событиях в истории Кыргызстана.',
+                trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                genre: 'drama',
+                language: foundShowtime.language,
+                duration: 120,
+                poster_url: foundShowtime.poster_url || '/assets/images/poster-placeholder.png',
+                poster: foundShowtime.poster_url || '/assets/images/poster-placeholder.png',
+                release_date: '2023-08-31',
+                is_showing: true
+              };
+              setMovie(mockMovie);
+              setSelectedShowtime(foundShowtime);
+              setShowtime(new Date(foundShowtime.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+              setDate(new Date(foundShowtime.datetime).toLocaleDateString());
+              setHall(foundShowtime.hall_name);
+              setFormat(foundShowtime.format);
+              const seatData = createMockSeats(foundShowtime.hall_name);
+              setSeats(seatData);
+              setLoading(false);
+              return;
+            }
           }
-        } catch (err) {
-          console.error('Error fetching showtimes:', err);
-          // Fallback to mock data
-          createMockSeats();
-          setShowtime('19:30');
-          setDate('2023-11-30');
-          setHall('Hall 1');
-          setFormat('2D');
-          
-          // Create a mock showtime with a valid UUID
-          const mockShowtime: Showtime = {
-            id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", // Valid UUID format
-            movie: movieDetails.id,
-            movie_title_kg: movieDetails.title_kg,
-            movie_title_ru: movieDetails.title_ru,
-            hall: "mock-hall-id",
-            hall_name: "Hall 1",
-            datetime: "2023-11-30T19:30:00Z",
-            language: "kg",
-            price: SEAT_PRICE
-          };
-          
-          setSelectedShowtime(mockShowtime);
-          console.log('Created mock showtime after error:', mockShowtime);
-        }
-        
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching movie:', err);
-        setError(t('booking.movieNotFound'));
-        setLoading(false);
-      }
-    };
-    
-    // Fetch available seats for a showtime
-    const fetchSeatsForShowtime = async (showtimeId: string) => {
-      try {
-        const availabilityData = await showtimeService.getAvailableSeats(showtimeId);
-        
-        if (availabilityData) {
-          const { hall_layout, booked_seats } = availabilityData;
-          
-          // Transform hall layout into seat array
-          const generatedSeats: Seat[] = [];
-          
-          if (hall_layout && Array.isArray(hall_layout.rows)) {
-            hall_layout.rows.forEach((row: any) => {
-              if (row && row.number && row.seats) {
-                row.seats.forEach((seatNum: number) => {
-                  const seatId = `${row.letter}${seatNum}`;
-                  const isBooked = booked_seats.some((bookedSeat: any) => 
-                    bookedSeat.row === row.letter && bookedSeat.number === seatNum
-                  );
-                  
-                  generatedSeats.push({
-                    id: seatId,
-                    row: row.letter,
-                    number: seatNum,
-                    type: row.type || 'standard',
-                    isAvailable: !isBooked
-                  });
-                });
-              }
-            });
-            
-            setSeats(generatedSeats);
-          } else {
-            // Fallback to mock data if hall layout is invalid
-            createMockSeats();
-          }
-        } else {
-          createMockSeats();
-        }
-      } catch (err) {
-        console.error('Error fetching seats:', err);
-        createMockSeats();
-      }
-    };
-    
-    // Generate mock seats if real data is unavailable
-    const createMockSeats = () => {
-      const generatedSeats: Seat[] = [];
-      
-      // Creating mock seat data
-      const rows = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-      rows.forEach(row => {
-        for (let i = 1; i <= 12; i++) {
-          let type: SeatType = 'standard';
-          if (row === 'A' || row === 'B') {
-            type = 'premium';
-          } else if (row === 'G' || row === 'H') {
-            type = 'vip';
-          }
-          
-          // Randomize availability (for demo purposes)
-          const isAvailable = Math.random() > 0.3;
-          
-          generatedSeats.push({
-            id: `${row}${i}`,
-            row,
-            number: i,
-            type,
-            isAvailable
-          });
-        }
-      });
-      
-      setSeats(generatedSeats);
-    };
-    
-    fetchMovieAndShowtimes();
-  }, [id, t]);
-  
-  const handleSeatClick = (seat: Seat) => {
-    if (!seat.isAvailable) return;
-    
-    if (selectedSeats.some(s => s.id === seat.id)) {
-      setSelectedSeats(selectedSeats.filter(s => s.id !== seat.id));
-    } else {
-      setSelectedSeats([...selectedSeats, seat]);
+          // Fallback: fetch showtime from API
+          (async () => {
+            try {
+              const showtime = await showtimeService.getShowtime(id);
+              const mockMovie = {
+                id: showtime.movie,
+                title_kg: showtime.movie_title_kg,
+                title_ru: showtime.movie_title_ru,
+                synopsis_kg: 'Кыргызстан тарыхындагы эң маанилүү окуялар жөнүндө тасма.',
+                synopsis_ru: 'Фильм о важнейших событиях в истории Кыргызстана.',
+                trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                genre: 'drama',
+                language: showtime.language,
+                duration: 120,
+                poster_url: showtime.poster_url || '/assets/images/poster-placeholder.png',
+                poster: showtime.poster_url || '/assets/images/poster-placeholder.png',
+                release_date: '2023-08-31',
+                is_showing: true
+              };
+              setMovie(mockMovie);
+              setSelectedShowtime(showtime);
+              setShowtime(new Date(showtime.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+              setDate(new Date(showtime.datetime).toLocaleDateString());
+              setHall(showtime.hall_name);
+              setFormat(showtime.format);
+              const seatData = createMockSeats(showtime.hall_name);
+              setSeats(seatData);
+            } catch (err) {
+              setError('No showtime data found in localStorage or API. Try booking from the Schedule page.');
+            } finally {
+              setLoading(false);
+            }
+          })();
+        });
+      return;
     }
+
+    try {
+      // Type assertion to handle potential null values
+      if (!savedShowtime || !savedParams) {
+        throw new Error('Missing saved data');
+      }
+      
+      const parsedShowtime = JSON.parse(savedShowtime) as Showtime;
+      const parsedParams = JSON.parse(savedParams);
+      
+      // Check for required fields
+      if (!parsedShowtime.id || !parsedShowtime.movie_title_kg || !parsedShowtime.hall_name || !parsedShowtime.datetime) {
+        setError('Showtime data is incomplete. Try booking from the Schedule page.');
+        setLoading(false);
+        return;
+      }
+      if (parsedShowtime.id !== id) {
+        setError('Showtime ID mismatch. Try booking from the Schedule page.');
+        setLoading(false);
+        return;
+      }
+
+      // Create mock movie data from the saved showtime
+      const mockMovie: Movie = {
+        id: parsedShowtime.movie,
+        title_kg: parsedShowtime.movie_title_kg,
+        title_ru: parsedShowtime.movie_title_ru,
+        synopsis_kg: 'Кыргызстан тарыхындагы эң маанилүү окуялар жөнүндө тасма.',
+        synopsis_ru: 'Фильм о важнейших событиях в истории Кыргызстана.',
+        trailer: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        genre: 'drama',
+        language: parsedShowtime.language,
+        duration: 120,
+        poster_url: parsedParams.poster || '/assets/images/poster-placeholder.png',
+        poster: parsedParams.poster || '/assets/images/poster-placeholder.png',
+        release_date: '2023-08-31',
+        is_showing: true
+      };
+
+      setMovie(mockMovie);
+      setSelectedShowtime(parsedShowtime);
+      setShowtime(new Date(parsedShowtime.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      setDate(parsedParams.date);
+      setHall(parsedShowtime.hall_name);
+      setFormat(parsedShowtime.format);
+      const seatData = createMockSeats(parsedShowtime.hall_name);
+      setSeats(seatData);
+      
+    } catch (err) {
+      console.error('Error parsing saved data:', err);
+      setError('Error parsing showtime data. Try booking from the Schedule page.');
+    } finally {
+      setLoading(false);
+    }
+
+    // Cleanup function
+    return () => {
+      if (window.location.pathname !== '/booking-confirmation') {
+        localStorage.removeItem('selectedShowtime');
+        localStorage.removeItem('currentShowtimeParams');
+      }
+    };
+  }, [id, t, createMockSeats]);
+
+  // Handle seat selection
+  const handleSeatClick = (row: number, seatNumber: number) => {
+    const newSeats = [...seats];
+    const rowIndex = row - 1;
+    const seatIndex = seatNumber - 1;
+    
+    // Check if seat is unavailable
+    if (newSeats[rowIndex][seatIndex].type === 'unavailable') {
+      return;
+    }
+    
+    // Toggle selection
+    newSeats[rowIndex][seatIndex].selected = !newSeats[rowIndex][seatIndex].selected;
+    
+    // Update selected seats list
+    if (newSeats[rowIndex][seatIndex].selected) {
+      setSelectedSeats([...selectedSeats, newSeats[rowIndex][seatIndex]]);
+    } else {
+      setSelectedSeats(selectedSeats.filter(seat => 
+        !(seat.row === row && seat.seatNumber === seatNumber)
+      ));
+    }
+    
+    setSeats(newSeats);
   };
   
-  const getSeatStatus = (seat: Seat) => {
-    if (!seat.isAvailable) return 'unavailable';
-    if (selectedSeats.some(s => s.id === seat.id)) return 'selected';
-    return seat.type;
-  };
-  
-  const handleProceedToCheckout = () => {
+  // Proceed to snacks after seat selection
+  const handleProceedToSnacks = () => {
     if (selectedSeats.length === 0) {
       alert(t('booking.selectSeatsFirst'));
       return;
     }
-
-    if (!movie) {
-      alert(t('booking.movieNotFound'));
+    
+    if (!movie || !selectedShowtime) {
+      setError(t('booking.dataNotFound'));
       return;
     }
 
-    // Default UUID to use if no showtime ID is available
-    const fallbackUUID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
-    
+    // Ensure we have valid data for all required fields
+    const safePoster = movie.poster_url && movie.poster_url.trim() !== '' ? movie.poster_url : '/images/movies/default-poster.jpg';
+    const safeMovieTitle = getMovieTitle(movie) || movie.title_kg || movie.title_ru || 'Unknown Title';
+    const safeDate = date || (selectedShowtime.datetime ? new Date(selectedShowtime.datetime).toLocaleDateString() : new Date().toLocaleDateString());
+    const safeTime = showtime || (selectedShowtime.datetime ? new Date(selectedShowtime.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+    const safeHall = hall || selectedShowtime.hall_name || 'Main Hall';
+    const safeFormat = format || selectedShowtime.format || '2D';
+    const serviceFee = 0; // No service fee
+    const seatTotal = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+    const totalPrice = seatTotal + serviceFee; // Total is just the seat prices
+
+    // Validate that we have valid seats
+    if (!selectedSeats || selectedSeats.length === 0) {
+      alert(t('booking.selectSeatsFirst'));
+      return;
+    }
+
+    // Ensure each seat has the required properties
+    const validatedSeats = selectedSeats.map(seat => ({
+      row: seat.row,
+      seatNumber: seat.seatNumber,
+      type: seat.type,
+      price: seat.price // Keep original seat price
+    }));
+
     // Prepare booking data for confirmation page
-    const bookingData: BookingData = {
-      movieId: movie.id,
-      movieTitle: getMovieTitle(movie),
-      poster: movie.poster,
-      selectedSeats,
-      totalPrice: selectedSeats.length * SEAT_PRICE,
-      date: date,
-      time: showtime,
-      hall: hall,
-      format: format,
-      showtimeId: selectedShowtime?.id || fallbackUUID // Use actual showtime ID or fallback UUID
+    const bookingData = {
+      showTimeId: selectedShowtime.id,
+      movie: movie,
+      showTime: selectedShowtime,
+      selectedSeats: validatedSeats,
+      totalPrice: totalPrice
     };
     
-    // Log the booking data to help with debugging
-    console.log('Booking data prepared:', JSON.stringify(bookingData));
-    console.log('Selected showtime:', selectedShowtime);
+    // Log booking data for debugging
+    console.log("Creating booking with data:", bookingData);
     
-    // Store booking data in localStorage for the confirmation page
-    localStorage.setItem('bookingData', JSON.stringify(bookingData));
-    
-    // Navigate to booking confirmation
-    navigate('/booking-confirmation');
+    // Save booking data to localStorage for the confirmation page
+    try {
+      localStorage.setItem('bookingData', JSON.stringify(bookingData));
+      
+      // Also make sure we have the current showtime params saved
+      const showtimeParams = {
+        id: selectedShowtime.id,
+        movie: movie.id,
+        title: safeMovieTitle,
+        time: safeTime,
+        date: safeDate,
+        hall: safeHall,
+        format: safeFormat,
+        poster: safePoster,
+        language: movie.language || selectedShowtime.language || 'KG',
+        price: totalPrice
+      };
+      
+      localStorage.setItem('currentShowtimeParams', JSON.stringify(showtimeParams));
+      
+      // Navigate to snack selection page instead of confirmation
+      navigate('/snack-selection');
+    } catch (error) {
+      console.error('Error saving booking data:', error);
+      alert(t('booking.errorSavingData'));
+    }
   };
-  
-  if (loading) return <LoadingSpinner />;
-  if (!movie) return <div className="container mx-auto px-4 py-8">{t('booking.movieNotFound')}</div>;
-  
+
+  // Debug button
+  const handleDebug = () => {
+    // Toggle debug mode
+    const newDebugMode = !debugMode;
+    setDebugMode(newDebugMode);
+    
+    // Only set debug info when enabling debug mode
+    if (newDebugMode) {
+      setDebugInfo({
+        selectedShowtime: selectedShowtime?.id || 'No showtime ID',
+        selectedSeats: selectedSeats.map(seat => `${String.fromCharCode(64 + seat.row)}${seat.seatNumber}`),
+        totalPrice: selectedSeats.reduce((sum, seat) => sum + seat.price, 0),
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Toggle debug class on the body
+    document.body.classList.toggle('debug-active', newDebugMode);
+  };
+
+  if (loading) {
+    return (
+      <div className="booking-container">
+        <LoadingSpinner fullScreen />
+      </div>
+    );
+  }
+
+  if (error || !movie) {
+    return (
+      <div className="booking-container">
+        <div className="booking-error">
+          <h2>{error || t('booking.movieNotFound')}</h2>
+          <button 
+            className="btn-primary"
+            onClick={() => navigate('/movies')}
+          >
+            {t('common.backToHome')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="booking-container">
+    <div className={`booking-container ${debugMode ? 'debug-active' : ''}`}>
+      <h1 className="booking-title">{t('booking.selectSeats')}</h1>
+      
       {loading ? (
-        <LoadingSpinner />
+        <div className="booking-loading">
+          <LoadingSpinner />
+          <p>{t('common.loading')}</p>
+        </div>
       ) : error ? (
-        <div className="error-message">{error}</div>
+        <div className="booking-error">{error}</div>
       ) : (
-        <div className="booking-content">
-          <div className="booking-movie-details">
-            <h2>{movie && getMovieTitle(movie)}</h2>
-            <div className="seat-selection-container">
-              <div className="screen">{t('booking.screen')}</div>
-              <div className="seats-container">
-                {seats.map((seat) => (
-                  <button
-                    key={seat.id}
-                    className={`seat ${getSeatStatus(seat)}`}
-                    aria-label={`${t('booking.seat')} ${seat.row}${seat.number}, ${t(`booking.${seat.type}`)}, ${
-                      seat.isAvailable ? t('booking.available') : t('booking.unavailable')
-                    }`}
-                    onClick={() => handleSeatClick(seat)}
-                    disabled={!seat.isAvailable}
-                  >
-                    {seat.row}{seat.number}
-                  </button>
-                ))}
+        <>
+          {/* Movie Info Section */}
+          <div className="movie-info">
+            {movie?.poster_url ? (
+              <img 
+                src={movie.poster_url} 
+                alt={getMovieTitle(movie)} 
+                className="movie-poster" 
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.src = '/assets/images/poster-placeholder.png';
+                }}
+              />
+            ) : (
+              <div className="movie-poster-placeholder"></div>
+            )}
+            
+            <div className="movie-details">
+              <div>
+                <h2 className="movie-title">{movie ? getMovieTitle(movie) : t('booking.unavailable')}</h2>
+                <div className="movie-meta">
+                  {movie?.duration ? (
+                    <span>{movie.duration} {t('common.minutes')}</span>
+                  ) : null}
+                </div>
               </div>
-              <div className="seat-legend">
-                <div className="legend-item">
-                  <div className="seat-sample standard"></div>
-                  <span>{t('booking.standard')}</span>
-                </div>
-                <div className="legend-item">
-                  <div className="seat-sample premium"></div>
-                  <span>{t('booking.premium')}</span>
-                </div>
-                <div className="legend-item">
-                  <div className="seat-sample vip"></div>
-                  <span>{t('booking.vip')}</span>
-                </div>
-                <div className="legend-item">
-                  <div className="seat-sample selected"></div>
-                  <span>{t('booking.selected')}</span>
-                </div>
-                <div className="legend-item">
-                  <div className="seat-sample unavailable"></div>
-                  <span>{t('booking.unavailable')}</span>
-                </div>
+              
+              <div className="showtime-detail">
+                <p><FaCalendarAlt /> {date || t('booking.unavailable')}</p>
+                <p><FaClock /> {showtime || t('booking.unavailable')}</p>  
+                <p><FaTicketAlt /> {hall || t('booking.unavailable')} • {format || '2D'}</p>
               </div>
             </div>
           </div>
-          <div className="booking-sidebar">
-            <div className="booking-summary">
-              <h3>{t('booking.summary')}</h3>
-              {movie && (
-                <>
-                  <div className="movie-summary">
-                    <h4>{getMovieTitle(movie)}</h4>
-                    <p>{getMovieSynopsis(movie).substring(0, 100)}...</p>
-                    <p>{t('movies.genre')}: {movie.genre}</p>
-                    <p>{t('movies.duration')}: {movie.duration} {t('movies.minutes')}</p>
+          
+          {/* Enhanced Seat Selection Area */}
+          <div className="seats-container">
+            <div className="screen"></div>
+            
+            <div className="seat-map">
+              {seats.map((row, rowIndex) => (
+                <div key={rowIndex} className="seat-row">
+                  <div className="row-label">
+                    {String.fromCharCode(65 + rowIndex)}
                   </div>
-                  <div className="selected-seats-summary">
-                    <h4>{t('booking.selectedSeats')}</h4>
-                    {selectedSeats.length === 0 ? (
-                      <p>{t('booking.noSeatsSelected')}</p>
-                    ) : (
-                      <>
-                        <p>
-                          {selectedSeats.map(seat => `${seat.row}${seat.number}`).join(', ')}
-                        </p>
-                        <p>
-                          {t('booking.totalPrice')}: {selectedSeats.length * SEAT_PRICE} {t('common.currency')}
-                        </p>
-                      </>
-                    )}
+                  <div className="row-seats">
+                    {row.map((seat) => (
+                      <div
+                        key={`${seat.row}-${seat.seatNumber}`}
+                        className={`seat ${seat.type === 'unavailable' ? 'seat-unavailable' : ''} 
+                                  ${seat.type === 'vip' ? 'seat-vip' : ''} 
+                                  ${seat.selected ? 'selected' : ''}`}
+                        onClick={() => handleSeatClick(seat.row, seat.seatNumber)}
+                      >
+                        <span className="seat-number">{seat.seatNumber}</span>
+                      </div>
+                    ))}
                   </div>
-                  <button 
-                    className="proceed-button"
-                    onClick={handleProceedToCheckout}
-                    disabled={selectedSeats.length === 0}
-                  >
-                    {t('booking.proceedToCheckout')}
-                  </button>
-                </>
+                </div>
+              ))}
+            </div>
+            
+            {/* Seat Legend */}
+            <div className="seat-legend">
+              <div className="legend-item">
+                <div className="seat-sample seat-standard"></div>
+                <span>{t('booking.standard')} ({SEAT_PRICE.standard} {t('common.currency')})</span>
+              </div>
+              <div className="legend-item">
+                <div className="seat-sample seat-vip"></div>
+                <span>{t('booking.vip')} ({SEAT_PRICE.vip} {t('common.currency')})</span>
+              </div>
+              <div className="legend-item">
+                <div className="seat-sample seat-selected"></div>
+                <span>{t('booking.selected')}</span>
+              </div>
+              <div className="legend-item">
+                <div className="seat-sample seat-unavailable"></div>
+                <span>{t('booking.unavailable')}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Booking Summary Section */}
+          <div className="booking-summary">
+            <div className="selected-seats">
+              <h3>{currentLanguage === 'ru' ? 'Выбранные места:' : currentLanguage === 'kg' ? 'Тандалган орундар:' : 'Selected Seats:'}</h3>
+              {selectedSeats.length === 0 ? (
+                <p className="no-seats">{currentLanguage === 'ru' ? 'Места не выбраны' : currentLanguage === 'kg' ? 'Орундар тандалган жок' : 'No seats selected'}</p>
+              ) : (
+                <div className="selected-seats-list">
+                  {selectedSeats.map((seat, index) => (
+                    <div key={index} className="selected-seat">
+                      <span className="seat-label">
+                        {String.fromCharCode(64 + seat.row)}{seat.seatNumber} 
+                        ({seat.type === 'standard' ? t('booking.standard') : t('booking.vip')})
+                      </span>
+                      <button 
+                        className="remove-seat" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSeatClick(seat.row, seat.seatNumber);
+                        }}
+                      >
+                        <FaTimes />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
+            
+            <div className="booking-totals">
+              <div className="booking-total-item">
+                <span>{currentLanguage === 'ru' ? 'Билеты' : currentLanguage === 'kg' ? 'Билеттер' : 'Tickets'}</span>
+                <span>{selectedSeats.reduce((sum, seat) => sum + seat.price, 0).toFixed(0)} {t('common.currency')}</span>
+              </div>
+              <div className="booking-total-item">
+                <span>{currentLanguage === 'ru' ? 'Сервисный сбор' : currentLanguage === 'kg' ? 'Тейлөө акысы' : 'Service Fee'}</span>
+                <span>0 {t('common.currency')}</span>
+              </div>
+              <div className="booking-total">
+                <span>{currentLanguage === 'ru' ? 'Итого' : currentLanguage === 'kg' ? 'Жалпы' : 'Total'}</span>
+                <span>{selectedSeats.reduce((sum, seat) => sum + seat.price, 0).toFixed(0)} {t('common.currency')}</span>
+              </div>
+            </div>
+            
+            <button 
+              className="checkout-button"
+              disabled={selectedSeats.length === 0}
+              onClick={handleProceedToSnacks}
+            >
+              {currentLanguage === 'ru' ? 'ПЕРЕЙТИ К ОПЛАТЕ' : 
+               currentLanguage === 'kg' ? 'ТӨЛӨМГӨ ӨТҮҮ' : 'CONTINUE TO CHECKOUT'}
+            </button>
           </div>
-        </div>
+          
+          {/* Debug section for development */}
+          <div className="debug-section">
+            <h3>Debug Information</h3>
+            <div className="debug-info">
+              {debugInfo && JSON.stringify(debugInfo, null, 2)}
+            </div>
+          </div>
+          
+          <button className="debug-button" onClick={handleDebug}>
+            {debugMode ? 'Hide Debug' : 'Debug'}
+          </button>
+        </>
       )}
     </div>
   );

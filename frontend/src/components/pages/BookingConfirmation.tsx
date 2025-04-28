@@ -1,23 +1,34 @@
 import React, { useState, useEffect, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FaCreditCard, FaApple, FaExclamationTriangle, FaCheckCircle, FaMoneyBillWave, FaDownload } from 'react-icons/fa';
-import LoadingSpinner from '../common/LoadingSpinner';
-import Button from '../common/Button';
+import { FaExclamationTriangle, FaCheckCircle, FaCreditCard, FaMoneyBillWave, FaApple, FaDownload } from 'react-icons/fa';
+import { Seat } from '../pages/Booking';
 import { authService } from '../../api/authService';
+import Button from '../common/Button';
+import LoadingSpinner from '../common/LoadingSpinner';
 import './BookingConfirmation.css';
 
-// Define interfaces for type checking
-interface Seat {
-  id: string;
-  row: string;
-  number: number;
-  type: string;
-  status: string;
+// Snack interface for cart items
+interface Snack {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  image: string;
+  categoryId: number;
 }
 
+interface CartItem {
+  snack: Snack;
+  quantity: number;
+}
+
+// Seat price constant
+const SEAT_PRICE = 180;
+
+// Update the BookingData interface to include snacks
 interface BookingData {
-  movieId: number;
+  movieId: string;
   movieTitle: string;
   poster: string;
   selectedSeats: Seat[];
@@ -26,11 +37,10 @@ interface BookingData {
   time: string;
   hall: string;
   format: string;
-  showtimeId?: string; // Optional showtimeId to link with the backend
+  showtimeId: string;
+  snackOrders?: CartItem[]; // Optional because older bookings might not have it
+  snackTotal?: number; // Optional total for snacks
 }
-
-// Seat price constant
-const SEAT_PRICE = 180;
 
 const BookingConfirmation: React.FC = () => {
   const { t } = useTranslation();
@@ -56,22 +66,140 @@ const BookingConfirmation: React.FC = () => {
     // Check if user is authenticated
     setIsAuthenticated(authService.isAuthenticated());
     
+    // Clear any existing cart items from localStorage to prevent persistence between bookings
+    // This ensures we don't accidentally display snacks from previous bookings
+    localStorage.removeItem('cartItems');
+    
     try {
       // Retrieve booking data from localStorage
       const storedBookingData = localStorage.getItem('bookingData');
+      const savedParamsStr = localStorage.getItem('currentShowtimeParams');
+      let savedParams = null;
+      
+      // Get snack cart data if available
+      let snackOrders: CartItem[] = [];
+      
+      try {
+        const cartItemsStr = localStorage.getItem('cartItems');
+        console.log('DEBUG - Cart items from localStorage:', cartItemsStr);
+        
+        if (cartItemsStr) {
+          snackOrders = JSON.parse(cartItemsStr);
+          console.log('DEBUG - Parsed cart items:', snackOrders);
+          
+          // Only count snack orders if they actually exist and have items
+          if (snackOrders && snackOrders.length > 0) {
+            // Check for medium popcorn
+            const hasMediumPopcorn = snackOrders.some(item => 
+              item.snack.name.toLowerCase().includes('medium') && 
+              item.snack.name.toLowerCase().includes('popcorn')
+            );
+            console.log('DEBUG - Has medium popcorn?', hasMediumPopcorn);
+          } else {
+            // Reset snack orders if empty array
+            snackOrders = [];
+          }
+        } else {
+          console.log('DEBUG - No cart items found in localStorage');
+          // Ensure these are empty if no cart items
+          snackOrders = [];
+        }
+      } catch (e) {
+        console.error('Error parsing snack cart data:', e);
+        // Ensure these are empty if error parsing
+        snackOrders = [];
+      }
+      
+      // Try to parse saved showtime params if available
+      if (savedParamsStr) {
+        try {
+          savedParams = JSON.parse(savedParamsStr);
+        } catch (e) {
+          console.error('Error parsing saved showtime params:', e);
+        }
+      }
       
       if (!storedBookingData) {
+        console.error('No booking data found in localStorage');
         setError(t('booking.dataNotFound'));
         setLoading(false);
         return;
       }
 
-      const parsedData = JSON.parse(storedBookingData) as BookingData;
+      // Parse the booking data
+      let parsedData: BookingData;
+      try {
+        parsedData = JSON.parse(storedBookingData) as BookingData;
+        
+        // Check if booking data already has snack orders
+        if (parsedData.snackOrders && parsedData.snackOrders.length > 0) {
+          console.log('DEBUG - Booking data already has snack orders:', parsedData.snackOrders);
+        } else {
+          console.log('DEBUG - No snack orders in booking data');
+          // Explicitly remove snack orders from parsed data if not present
+          delete parsedData.snackOrders;
+          delete parsedData.snackTotal;
+        }
+      } catch (e) {
+        console.error('Error parsing booking data:', e);
+        setError(t('booking.dataNotFound'));
+        setLoading(false);
+        return;
+      }
       
-      // Ensure total price is calculated correctly (in case it wasn't stored properly)
-      parsedData.totalPrice = parsedData.selectedSeats.length * SEAT_PRICE;
+      // Log the parsed data to debug
+      console.log("Loaded booking data:", parsedData);
       
-      setBookingData(parsedData);
+      // Create a complete object with fallbacks for all required fields
+      const completeData: BookingData = {
+        movieId: parsedData.movieId || (savedParams?.movie || 'unknown'),
+        movieTitle: parsedData.movieTitle || (savedParams?.title || 'Unknown Title'),
+        poster: parsedData.poster || (savedParams?.poster || '/images/movies/default-poster.jpg'),
+        selectedSeats: parsedData.selectedSeats || [],
+        totalPrice: parsedData.totalPrice || (parsedData.selectedSeats?.length * (savedParams?.price || SEAT_PRICE) || 0),
+        date: parsedData.date || (savedParams?.date || new Date().toLocaleDateString()),
+        time: parsedData.time || (savedParams?.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })),
+        hall: parsedData.hall || (savedParams?.hall || 'Main Hall'),
+        format: parsedData.format || (savedParams?.format || '2D'),
+        showtimeId: parsedData.showtimeId || (savedParams?.id || 'unknown'),
+      };
+      
+      // Only add snack data if it actually exists in the parsed data
+      // This prevents inheriting snack data from previous bookings
+      if (parsedData.snackOrders && parsedData.snackOrders.length > 0) {
+        completeData.snackOrders = parsedData.snackOrders;
+        completeData.snackTotal = parsedData.snackTotal;
+        console.log('DEBUG - Added snack orders from booking data:', completeData.snackOrders);
+      }
+      
+      // Verify that we have at least some seats selected
+      if (!completeData.selectedSeats || completeData.selectedSeats.length === 0) {
+        console.error('No seats selected in booking data');
+        setError(t('booking.incompleteData'));
+        setLoading(false);
+        return;
+      }
+      
+      // Update total price to include both seats and snacks
+      const seatTotal = completeData.selectedSeats.length * (savedParams?.price || SEAT_PRICE);
+      // Calculate snack total if snack orders exist
+      if (completeData.snackOrders && completeData.snackOrders.length > 0) {
+        const snackTotal = completeData.snackOrders.reduce((total, item) => 
+          total + (item.quantity * item.snack.price), 0);
+        completeData.snackTotal = snackTotal;
+        completeData.totalPrice = seatTotal + snackTotal;
+      } else {
+        completeData.totalPrice = seatTotal;
+      }
+      
+      // Final check for snack orders - log what we're actually using
+      if (completeData.snackOrders && completeData.snackOrders.length > 0) {
+        console.log('DEBUG - Final data has snack orders:', completeData.snackOrders);
+      } else {
+        console.log('DEBUG - Final booking data has no snack orders');
+      }
+      
+      setBookingData(completeData);
       
       // Generate random confirmation number
       const randomNum = Math.floor(100000 + Math.random() * 900000);
@@ -187,6 +315,7 @@ const BookingConfirmation: React.FC = () => {
       // Clear booking data after successful payment
       setTimeout(() => {
         localStorage.removeItem('bookingData');
+        localStorage.removeItem('currentShowtimeParams'); // Also clear saved showtime parameters
       }, 2000);
     } catch (error: any) {
       console.error('Error processing payment:', error);
@@ -239,7 +368,7 @@ const BookingConfirmation: React.FC = () => {
       
       // Format seats for display
       const formattedSeats = bookingData.selectedSeats.map(seat => 
-        `Row ${seat.row}, Seat ${seat.number}`
+        `Row ${seat.row}, Seat ${seat.seatNumber}`
       ).join('</span><span class="seat-tag">');
       
       // Create ticket content as HTML for better formatting
@@ -292,6 +421,16 @@ const BookingConfirmation: React.FC = () => {
     .ticket-info {
       flex: 3;
       padding-right: 30px;
+    }
+    .movie-poster-img {
+      width: 100px;
+      height: 140px;
+      object-fit: cover;
+      border-radius: 8px;
+      float: right;
+      margin-left: 15px;
+      margin-bottom: 15px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
     }
     .ticket-qr {
       flex: 1;
@@ -439,7 +578,29 @@ const BookingConfirmation: React.FC = () => {
     <div class="ticket-body">
       <div class="ticket-info">
         <div class="confirmation-number">${confirmationNumber}</div>
-        <h2 class="movie-title">${bookingData.movieTitle}</h2>
+        <h2 class="movie-title">
+          ${bookingData.movieTitle}
+          <img 
+            src="${bookingData.poster || "https://placehold.co/400x600/333/FFF?text=Movie"}" 
+            class="movie-poster-img"
+            onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+              if (e.currentTarget) {
+                console.log("Failed to load image:", bookingData.poster);
+                // Try to get a placeholder image from Unsplash
+                e.currentTarget.src = 'https://images.unsplash.com/photo-1518834107812-67b0b7c58434?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60';
+                
+                // If that also fails, try a more reliable placeholder
+                e.currentTarget.onerror = function(this: HTMLImageElement) {
+                  console.log("Failed to load Unsplash fallback image");
+                  this.src = 'https://placehold.co/400x600/333/FFF?text=Movie';
+                  // Prevent infinite loop
+                  this.onerror = null;
+                };
+              }
+            }}
+            alt="${bookingData.movieTitle}"
+          />
+        </h2>
         
         <div class="info-group">
           <div class="info-group-title">Movie Details</div>
@@ -483,9 +644,25 @@ const BookingConfirmation: React.FC = () => {
           </div>
         </div>
         
+        ${bookingData.snackOrders && bookingData.snackOrders.length > 0 ? `
+        <div class="info-group">
+          <div class="info-group-title">Snack Orders</div>
+          ${bookingData.snackOrders.map(item => `
+            <div class="info-row">
+              <span class="info-label">${item.snack.name}:</span>
+              <span class="info-value">${item.quantity} × ${item.snack.price} сом</span>
+            </div>
+          `).join('')}
+          <div class="info-row total-row">
+            <span class="info-label">Snack Total:</span>
+            <span class="info-value">${bookingData.snackTotal} сом</span>
+          </div>
+        </div>
+        ` : ''}
+        
         <div class="price-row">
           <span class="price-label">Total Price:</span>
-          <span class="price-value">${bookingData.totalPrice} soms</span>
+          <span class="price-value">${bookingData.totalPrice} сом</span>
         </div>
         
         <div class="purchase-info">
@@ -584,11 +761,23 @@ const BookingConfirmation: React.FC = () => {
             <div className="movie-details">
               <div className="movie-poster">
                 <img
-                  src={bookingData.poster}
+                  src={bookingData.poster || "https://placehold.co/400x600/333/FFF?text=Movie"}
                   alt={bookingData.movieTitle}
-                  onError={(e) => {
-                    // Fallback if image fails to load
-                    e.currentTarget.src = '/images/movies/default-poster.jpg';
+                  className="w-full h-auto rounded-lg max-h-64 object-cover"
+                  onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                    if (e.currentTarget) {
+                      console.log("Failed to load image:", bookingData.poster);
+                      // Try to get a placeholder image from Unsplash
+                      e.currentTarget.src = 'https://images.unsplash.com/photo-1518834107812-67b0b7c58434?ixlib=rb-1.2.1&auto=format&fit=crop&w=500&q=60';
+                      
+                      // If that also fails, try a more reliable placeholder
+                      e.currentTarget.onerror = function(this: HTMLImageElement) {
+                        console.log("Failed to load Unsplash fallback image");
+                        this.src = 'https://placehold.co/400x600/333/FFF?text=Movie';
+                        // Prevent infinite loop
+                        this.onerror = null;
+                      };
+                    }
                   }}
                 />
               </div>
@@ -624,12 +813,12 @@ const BookingConfirmation: React.FC = () => {
               
               <p className="font-medium mb-2">{t('booking.selectedSeats')}:</p>
               <div className="seats-list">
-                {bookingData.selectedSeats.map((seat) => (
+                {bookingData.selectedSeats.map((seat, index) => (
                   <span
-                    key={seat.id}
+                    key={`seat-${seat.row}-${seat.seatNumber}`}
                     className="seat-tag"
                   >
-                    {t('booking.rowSeat', { row: seat.row, seat: seat.number })}
+                    {t('booking.rowSeat', { row: seat.row, seat: seat.seatNumber })}
                   </span>
                 ))}
               </div>
@@ -639,6 +828,80 @@ const BookingConfirmation: React.FC = () => {
               <span>{t('booking.totalPrice')}:</span>
               <span>{bookingData.totalPrice} {t('common.currency')}</span>
             </div>
+            
+            {/* Display snack orders if they exist */}
+            {bookingData.snackOrders && bookingData.snackOrders.length > 0 && (
+              <div className="snack-orders">
+                <h3 className="text-xl font-bold mb-3">{t('booking.snackOrders')}</h3>
+                <div className="snack-items">
+                  {bookingData.snackOrders.map((item) => (
+                    <div key={item.snack.id} className="snack-item">
+                      <div className="snack-item-image">
+                        <img 
+                          src={item.snack.image || "/images/snacks/popcorn.png"} 
+                          alt={item.snack.name}
+                          onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                            if (e.currentTarget) {
+                              console.log("Failed to load snack image:", item.snack.image);
+                              // Try to get image from public folder first
+                              const newSrc = `/images/snacks/${item.snack.name.toLowerCase().replace(/\s+/g, '')}.png`;
+                              e.currentTarget.src = newSrc;
+                              
+                              // If that fails, try matching with existing images
+                              e.currentTarget.onerror = function(this: HTMLImageElement) {
+                                console.log("Failed to load snack fallback image:", newSrc);
+                                // Map to our known snack images
+                                let mappedImage = '';
+                                if (item.snack.name.toLowerCase().includes('popcorn')) {
+                                  if (item.snack.name.toLowerCase().includes('caramel')) {
+                                    mappedImage = '/images/snacks/caramelpopcorn.png';
+                                  } else {
+                                    mappedImage = '/images/snacks/classicpopcorn.png';
+                                  }
+                                } else if (item.snack.name.toLowerCase().includes('cola') || 
+                                          item.snack.name.toLowerCase().includes('coke')) {
+                                  mappedImage = '/images/snacks/coca-cola.png';
+                                } else if (item.snack.name.toLowerCase().includes('nachos')) {
+                                  mappedImage = '/images/snacks/nachoswithcheese.png';
+                                } else if (item.snack.name.toLowerCase().includes('combo')) {
+                                  if (item.snack.name.toLowerCase().includes('family')) {
+                                    mappedImage = '/images/snacks/familycombo.png';
+                                  } else {
+                                    mappedImage = '/images/snacks/moviecombo.png';
+                                  }
+                                } else if (item.snack.name.toLowerCase().includes('chocolate')) {
+                                  mappedImage = '/images/snacks/bombchocolate.png';
+                                } else if (item.snack.name.toLowerCase().includes('tea')) {
+                                  mappedImage = '/images/snacks/teawithfruits.png';
+                                } else {
+                                  // Fallback to generic popcorn image
+                                  mappedImage = '/images/snacks/popcorn.png';
+                                }
+                                
+                                this.src = mappedImage;
+                                // Prevent infinite loop
+                                this.onerror = null;
+                              };
+                            }
+                          }}
+                        />
+                      </div>
+                      <div className="snack-item-info">
+                        <span>{item.snack.name}</span>
+                        <span>{item.quantity} × {item.snack.price} {t('common.currency')}</span>
+                      </div>
+                      <div className="snack-item-total">
+                        {item.quantity * item.snack.price} {t('common.currency')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="snack-total">
+                  <span>{t('booking.snackTotal')}:</span>
+                  <span>{bookingData.snackTotal} {t('common.currency')}</span>
+                </div>
+              </div>
+            )}
             
             <div className="payment-section">
               <h3 className="text-xl font-bold mb-4">{t('booking.payment')}</h3>

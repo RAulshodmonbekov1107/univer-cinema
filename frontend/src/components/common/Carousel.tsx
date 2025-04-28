@@ -94,7 +94,7 @@ const Carousel: React.FC<CarouselProps> = ({
               <div className="container-custom">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                   {/* Text content */}
-                  <div className={`${index === currentIndex ? 'animate-slide-right' : ''}`}>
+                  <div>
                     <span className="inline-block px-3 py-1 bg-white/10 text-white/90 text-sm rounded-full mb-4">
                       {movie.genre}
                     </span>
@@ -136,8 +136,8 @@ const Carousel: React.FC<CarouselProps> = ({
                   
                   {/* Optional: Poster image in a frame */}
                   <div className="hidden md:block">
-                    <div className={`relative rounded-lg overflow-hidden shadow-2xl transform transition-all duration-700 ${
-                      index === currentIndex ? 'scale-100 opacity-100 animate-slide-left' : 'scale-95 opacity-0'
+                    <div className={`relative rounded-lg overflow-hidden shadow-2xl transition-all duration-700 ${
+                      index === currentIndex ? 'opacity-100' : 'opacity-0'
                     }`}>
                       <img 
                         src={movie.poster} 

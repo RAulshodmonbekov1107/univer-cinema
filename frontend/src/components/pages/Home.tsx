@@ -7,40 +7,60 @@ import MovieCard from '../common/MovieCard';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { movieService, Movie } from '../../api/movieService';
 import HeroSection from '../common/HeroSection';
+import { useBooking } from '../../contexts/BookingContext';
+import './Home.css';
 
 const Home: React.FC = () => {
   const { t, i18n } = useTranslation();
   const currentLanguage = i18n.language;
   const [loading, setLoading] = useState(true);
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const { startNewBooking } = useBooking();
   
   useEffect(() => {
+    // Clear any previous booking data when landing on the homepage
+    // This ensures we don't have stale booking data when starting a new booking
+    startNewBooking();
+    
     const fetchMovies = async () => {
       try {
         setLoading(true);
-        
+        setError(null);
         // Try to fetch real data from the API
         const nowShowingResponse = await movieService.getNowShowing();
         if (nowShowingResponse && nowShowingResponse.length > 0) {
           setMovies(nowShowingResponse);
+        } else {
+          setMovies([]);
         }
       } catch (err) {
         console.error(err);
-        // Using sample data if API fails
+        setError('Could not load movies. Please try again later.');
+        setMovies([]);
       } finally {
         setLoading(false);
       }
     };
-    
     fetchMovies();
-  }, []);
+  }, [currentLanguage]);
   
   if (loading) {
     return <LoadingSpinner size="large" />;
   }
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-dark text-white">
+        <div className="bg-white/10 p-8 rounded-xl shadow-md text-center">
+          <h2 className="text-2xl font-bold mb-4">{error}</h2>
+          <button className="btn-primary" onClick={() => window.location.reload()}>{t('common.refresh')}</button>
+        </div>
+      </div>
+    );
+  }
   
   return (
-    <div className="min-h-screen bg-dark">
+    <div className="home-container">
       {/* Hero Section with Video Background */}
       <HeroSection 
         videoSrc="/videos/cinema-background.mp4"
@@ -56,30 +76,30 @@ const Home: React.FC = () => {
       </section>
       
       {/* Now Showing Section */}
-      <section className="py-14 bg-gray-50 relative overflow-hidden">
+      <section className="now-showing-section py-14 bg-gray-50 relative overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute -top-20 -right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
         <div className="absolute -bottom-32 -left-20 w-80 h-80 bg-primary/5 rounded-full blur-3xl"></div>
         
         <div className="container-custom relative z-10">
-          <div className="flex justify-between items-center mb-10">
+          <div className="section-header flex justify-between items-center mb-10">
             <div className="flex items-center">
               <FaFilm className="text-primary mr-3 text-2xl" />
               <h2 className="text-3xl font-bold">{t('home.nowShowing')}</h2>
             </div>
-            <Link to="/movies" className="group flex items-center text-primary hover:text-red-700 font-medium transition-colors">
+            <Link to="/movies" className="view-all-link group flex items-center text-primary hover:text-red-700 font-medium transition-colors">
               {t('home.viewAll')}
               <FaArrowRight className="ml-2 transition-transform duration-300 group-hover:translate-x-1" />
             </Link>
           </div>
           
           {movies.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="movie-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
               {movies.slice(0, 4).map((movie, index) => (
                 <MovieCard 
                   key={movie.id} 
                   movie={movie}
-                  animation={`animate-fade-in animate-delay-${index * 100}`} 
+                  animation="" 
                 />
               ))}
             </div>
@@ -97,25 +117,25 @@ const Home: React.FC = () => {
       </section>
       
       {/* Cultural Spotlight Section */}
-      <section className="py-16 cinema-gradient text-white relative overflow-hidden">
+      <section className="cultural-section py-16 cinema-gradient text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1518457607834-6e8d80c183c5?ixlib=rb-1.2.1&auto=format&fit=crop&w=1920&q=80')] opacity-20 bg-cover bg-center"></div>
         
         <div className="container-custom relative z-10">
-          <div className="text-center mb-10">
-            <span className="inline-block px-4 py-1 bg-white/10 text-white rounded-full mb-4">
+          <div className="section-title text-center mb-10">
+            <span className="badge inline-block px-4 py-1 bg-white/10 text-white rounded-full mb-4">
               {t('home.cultural')}
             </span>
             <h2 className="text-4xl font-bold mb-4">{t('home.culturalSpotlight')}</h2>
-            <p className="text-white/80 max-w-3xl mx-auto">
+            <p className="section-description text-white/80 max-w-3xl mx-auto">
               {currentLanguage === 'kg'
                 ? 'Кыргыз кинематографиясынын мыкты үлгүлөрү менен таанышып, улуттук киноискусствонун бай мурасын ачыңыз.'
                 : 'Познакомьтесь с лучшими образцами кыргызской кинематографии и откройте для себя богатое наследие национального киноискусства.'}
             </p>
           </div>
           
-          <div className="flex flex-col md:flex-row items-center justify-center mb-8">
-            <div className="w-full md:w-1/2 md:pr-8 mb-8 md:mb-0">
-              <div className="relative rounded-xl overflow-hidden shadow-2xl animate-fade-in">
+          <div className="cultural-grid flex flex-col md:flex-row items-center justify-center mb-8">
+            <div className="featured-cultural w-full md:w-1/2 md:pr-8 mb-8 md:mb-0">
+              <div className="relative rounded-xl overflow-hidden shadow-2xl">
                 <img 
                   src="https://images.unsplash.com/photo-1518457607834-6e8d80c183c5?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
                   alt="Kurmanjan Datka" 
@@ -135,16 +155,16 @@ const Home: React.FC = () => {
               </div>
             </div>
             
-            <div className="w-full md:w-1/2">
-              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl">
+            <div className="weekly-highlights w-full md:w-1/2">
+              <div className="highlights-container bg-white/10 backdrop-blur-sm p-6 rounded-xl">
                 <h3 className="text-xl font-bold mb-4">{t('home.weeklyHighlights')}</h3>
                 
-                <div className="space-y-4">
+                <div className="highlights-list space-y-4">
                   {movies.slice(0, 3).map((movie, index) => (
                     <Link 
                       key={movie.id}
                       to={`/movies/${movie.id}`}
-                      className="flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors"
+                      className="highlight-item flex items-center p-3 rounded-lg hover:bg-white/10 transition-colors"
                     >
                       <img 
                         src={movie.poster} 
@@ -170,7 +190,7 @@ const Home: React.FC = () => {
           </div>
           
           <div className="text-center mt-8">
-            <Link to="/cultural" className="btn-outline border-white text-white hover:bg-white hover:text-primary inline-flex items-center">
+            <Link to="/cultural" className="discover-more-btn btn-outline border-white text-white hover:bg-white hover:text-primary inline-flex items-center">
               <FaInfoCircle className="mr-2" />
               {t('home.discoverMore')}
             </Link>
@@ -198,7 +218,7 @@ const Home: React.FC = () => {
                 <MovieCard 
                   key={movie.id} 
                   movie={movie} 
-                  animation={`animate-fade-in animate-delay-${index * 100}`}
+                  animation=""
                 />
               ))}
             </div>
@@ -213,7 +233,7 @@ const Home: React.FC = () => {
       </section>
       
       {/* About Section */}
-      <section className="py-20 bg-gray-900 text-white relative overflow-hidden">
+      <section className="py-20 bg-gray-900 text-white relative overflow-hidden about-section">
         {/* Decorative red particles */}
         <div className="absolute top-20 left-20 w-24 h-24 bg-primary/30 rounded-full blur-2xl"></div>
         <div className="absolute bottom-32 right-20 w-32 h-32 bg-primary/20 rounded-full blur-2xl"></div>
@@ -223,7 +243,6 @@ const Home: React.FC = () => {
             <div className="order-2 md:order-1">
               <h2 className="text-3xl md:text-4xl font-bold mb-6 inline-block relative">
                 {t('home.aboutUs')}
-                <span className="absolute -bottom-2 left-0 w-1/3 h-1 bg-primary"></span>
               </h2>
               <p className="text-gray-300 mb-6 leading-relaxed">
                 Univer Cinema - это современный кинотеатр в городе Нарын, предлагающий высококачественное кинематографическое развлечение для всей семьи. Наша миссия - обогатить культурную жизнь Нарына, представляя лучшие фильмы на кыргызском и русском языках.
@@ -231,13 +250,14 @@ const Home: React.FC = () => {
               <p className="text-gray-300 mb-8 leading-relaxed">
                 Мы оснащены новейшими технологиями кинопоказа, удобными креслами и предлагаем широкий выбор закусок для полного погружения в мир кино.
               </p>
-              <Link to="/about" className="btn-primary inline-flex items-center group">
+              <Link to="/about" className="btn-cta inline-flex items-center group">
+                <FaInfoCircle />
                 {t('nav.about')}
                 <FaArrowRight className="ml-2 transform transition-transform duration-300 group-hover:translate-x-1" />
               </Link>
             </div>
             <div className="order-1 md:order-2">
-              <div className="rounded-2xl overflow-hidden shadow-2xl transform md:rotate-3 hover:rotate-0 transition-transform duration-700 relative">
+              <div className="cinema-image rounded-2xl overflow-hidden shadow-2xl transform md:rotate-3 transition-transform duration-700 relative">
                 <img 
                   src="https://images.unsplash.com/photo-1517604931442-7e0c8ed2963c?ixlib=rb-1.2.1&auto=format&fit=crop&w=800&q=80" 
                   alt="Cinema Interior" 
@@ -259,7 +279,7 @@ const Home: React.FC = () => {
       </section>
       
       {/* Testimonials/Reviews Section */}
-      <section className="py-16 bg-gray-50">
+      <section className="py-16 bg-gray-50 testimonials-section">
         <div className="container-custom">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold mb-4">{t('home.testimonials')}</h2>
@@ -272,23 +292,22 @@ const Home: React.FC = () => {
             {[1, 2, 3].map((item) => (
               <div 
                 key={item} 
-                className="bg-white p-6 rounded-xl shadow-md transform hover:-translate-y-2 transition-transform duration-300"
+                className="testimonial-card"
               >
-                <div className="flex items-center mb-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
-                      {/* Display initials or avatar */}
-                      A{item}
-                    </div>
+                <div className="testimonial-content">
+                  <p className="text-gray-600">
+                    Отличный кинотеатр с прекрасным звуком и изображением. Удобные кресла и дружелюбный персонал. Обязательно вернусь снова!
+                  </p>
+                </div>
+                <div className="testimonial-author">
+                  <div className="testimonial-avatar">
+                    A{item}
                   </div>
-                  <div className="ml-4">
-                    <h3 className="font-bold">Анонимный посетитель</h3>
-                    <p className="text-gray-500 text-sm">{new Date().toLocaleDateString()}</p>
+                  <div className="testimonial-info">
+                    <h3 className="testimonial-name">Анонимный посетитель</h3>
+                    <p className="testimonial-date">{new Date().toLocaleDateString()}</p>
                   </div>
                 </div>
-                <p className="text-gray-600">
-                  Отличный кинотеатр с прекрасным звуком и изображением. Удобные кресла и дружелюбный персонал. Обязательно вернусь снова!
-                </p>
               </div>
             ))}
           </div>

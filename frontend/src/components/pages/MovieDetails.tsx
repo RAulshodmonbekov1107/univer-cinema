@@ -4,18 +4,26 @@ import { useTranslation } from 'react-i18next';
 import { FaStar, FaPlayCircle, FaTicketAlt, FaClock, FaCalendarAlt, FaInfoCircle } from 'react-icons/fa';
 import LoadingSpinner from '../common/LoadingSpinner';
 import { movieService, Movie } from '../../api/movieService';
+import { showtimeService, Showtime } from '../../api/showtimeService';
+import { getMovieTitle, getMovieSynopsis, getMovieMetadata } from '../../utils/movieHelpers';
+import { useBooking } from '../../contexts/BookingContext';
+import './MovieDetails.css';
 
 const MovieDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const currentLanguage = i18n.language;
+  const { startNewBooking } = useBooking();
   
   const [loading, setLoading] = useState(true);
   const [movie, setMovie] = useState<Movie | null>(null);
   const [activeTab, setActiveTab] = useState<'about' | 'showtimes' | 'reviews'>('about');
   const [trailerOpen, setTrailerOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const [showtimes, setShowtimes] = useState<Showtime[]>([]);
+  const [loadingShowtimes, setLoadingShowtimes] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
   
   // Animation classes
   const fadeIn = "animate-fade-in";
@@ -46,6 +54,30 @@ const MovieDetails: React.FC = () => {
     window.scrollTo(0, 0);
   }, [id]);
   
+  useEffect(() => {
+    const fetchShowtimes = async () => {
+      if (!id || !selectedDate) return;
+      
+      try {
+        setLoadingShowtimes(true);
+        const showtimesData = await showtimeService.getShowtimesByMovie(id);
+        // Filter showtimes for the selected date
+        const filteredShowtimes = showtimesData.filter((showtime: Showtime) => 
+          showtime.datetime.startsWith(selectedDate)
+        );
+        setShowtimes(filteredShowtimes);
+      } catch (error) {
+        console.error('Error fetching showtimes:', error);
+      } finally {
+        setLoadingShowtimes(false);
+      }
+    };
+    
+    if (activeTab === 'showtimes') {
+      fetchShowtimes();
+    }
+  }, [id, selectedDate, activeTab]);
+  
   // Generate next 7 days for showtimes
   const getDates = () => {
     const dates = [];
@@ -64,20 +96,42 @@ const MovieDetails: React.FC = () => {
     return dates;
   };
   
-  // Mock showtimes data
-  const getShowtimes = () => {
-    return [
-      { time: '10:00', available: true },
-      { time: '12:30', available: true },
-      { time: '15:00', available: false },
-      { time: '17:30', available: true },
-      { time: '20:00', available: true },
-      { time: '22:30', available: true },
-    ];
-  };
-  
-  const handleBookTicket = (time: string) => {
-    navigate(`/booking/${id}?date=${selectedDate}&time=${time}`);
+  const handleBookTicket = async (showtimeId: string) => {
+    // Clear any previous booking data when starting a new booking
+    startNewBooking();
+    
+    setBookingLoading(true);
+    try {
+      // Fetch showtime data
+      const showtime = await showtimeService.getShowtime(showtimeId);
+      // Store showtime data in localStorage (same as Schedule page)
+      localStorage.setItem('selectedShowtime', JSON.stringify({
+        ...showtime,
+        poster: movie?.poster || '',
+        availableSeats: 100, // fallback/mock
+        totalSeats: 120 // fallback/mock
+      }));
+      localStorage.setItem('currentShowtimeParams', JSON.stringify({
+        id: showtime.id,
+        movie: showtime.movie,
+        title: showtime.movie_title_kg,
+        time: new Date(showtime.datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: new Date(showtime.datetime).toLocaleDateString(),
+        hall: showtime.hall_name,
+        format: showtime.format,
+        poster: movie?.poster || '',
+        language: showtime.language,
+        price: showtime.price
+      }));
+      // Debug log
+      console.log('MovieDetails: set selectedShowtime:', localStorage.getItem('selectedShowtime'));
+      console.log('MovieDetails: set currentShowtimeParams:', localStorage.getItem('currentShowtimeParams'));
+      setBookingLoading(false);
+      navigate(`/booking/${showtimeId}`);
+    } catch (err) {
+      setBookingLoading(false);
+      alert('Failed to load showtime data for booking.');
+    }
   };
   
   // Mock reviews data
@@ -86,6 +140,21 @@ const MovieDetails: React.FC = () => {
     { id: 2, author: 'Елена К.', rating: 5, text: 'Один из лучших фильмов, которые я видела в этом году.', date: '2023-05-10' },
     { id: 3, author: 'Михаил С.', rating: 3.5, text: 'Неплохой фильм, но ожидал большего.', date: '2023-05-05' },
   ];
+  
+  // Group showtimes by language and hall type
+  const groupedShowtimes = () => {
+    if (!showtimes.length) return { standard: [], vip: [] };
+    
+    return {
+      standard: showtimes.filter(showtime => showtime.hall_name.toLowerCase().includes('standard')),
+      vip: showtimes.filter(showtime => showtime.hall_name.toLowerCase().includes('vip'))
+    };
+  };
+  
+  // Format datetime to time only (e.g., "14:30")
+  const formatTime = (datetime: string) => {
+    return new Date(datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
   
   if (loading) {
     return <LoadingSpinner fullScreen />;
@@ -109,16 +178,7 @@ const MovieDetails: React.FC = () => {
   return (
     <div className="bg-dark text-white">
       {/* Hero Section with Backdrop */}
-      <div className="relative w-full h-[70vh] overflow-hidden">
-        {/* Backdrop Image */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${movie.poster})` }}
-        >
-          {/* Gradient Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-dark via-dark/80 to-dark/40"></div>
-        </div>
-        
+      <div className="movie-backdrop" style={{ backgroundImage: `url(${movie.poster})` }}>
         {/* Content */}
         <div className="container-custom relative z-10 h-full flex flex-col justify-end pb-12">
           <div className="flex flex-col md:flex-row items-start gap-8">
@@ -126,40 +186,37 @@ const MovieDetails: React.FC = () => {
             <div className={`shrink-0 w-48 md:w-64 rounded-xl overflow-hidden shadow-2xl transform hover:scale-105 transition-transform duration-300 ${fadeIn}`}>
               <img 
                 src={movie.poster} 
-                alt={currentLanguage === 'kg' ? movie.title_kg : movie.title_ru} 
+                alt={getMovieTitle(movie, currentLanguage)} 
                 className="w-full h-auto"
               />
             </div>
             
             {/* Movie Info */}
-            <div className={`flex-1 ${slideUp}`}>
-              <div className="flex items-center mb-2">
-                <span className="px-2 py-1 bg-primary text-white text-xs rounded-md mr-3">
-                  12+
-                </span>
-                <div className="flex items-center">
+            <div className={`flex-1 movie-info-block ${slideUp}`}>
+              <div className="flex items-center mb-3">
+                <span className="movie-badge badge-age">12+</span>
+                <div className="badge-rating flex items-center">
                   <FaStar className="text-yellow-400 mr-1" />
                   <span className="font-medium">8.5</span>
                   <span className="text-gray-400 text-sm ml-1">IMDb</span>
                 </div>
               </div>
               
-              <h1 className="text-3xl md:text-5xl font-bold mb-3">
-                {currentLanguage === 'kg' ? movie.title_kg : movie.title_ru}
+              <h1 className="movie-banner-title">
+                {getMovieTitle(movie, currentLanguage)}
               </h1>
               
-              <p className="text-gray-300 mb-4">
-                {movie.title_ru}
-                <span className="mx-2">•</span>
-                {new Date(movie.release_date).getFullYear()}
-                <span className="mx-2">•</span>
-                {movie.genre}
-                <span className="mx-2">•</span>
-                {movie.duration} {t('movies.minutes')}
-              </p>
+              <div className="movie-subtitle">
+                {getMovieMetadata(movie, t('movies.minutes')).split(' • ').map((item, index, array) => (
+                  <React.Fragment key={index}>
+                    <span>{item}</span>
+                    {index < array.length - 1 && <span className="movie-subtitle-dot" />}
+                  </React.Fragment>
+                ))}
+              </div>
               
               {/* Actions */}
-              <div className="flex flex-wrap gap-4 mt-6">
+              <div className="flex flex-wrap gap-4 mt-8">
                 <button 
                   onClick={() => setTrailerOpen(true)}
                   className="btn-outline border-white text-white hover:bg-white hover:text-dark flex items-center"
@@ -215,7 +272,7 @@ const MovieDetails: React.FC = () => {
             <div className="md:col-span-2">
               <h2 className="text-2xl font-bold mb-6">{t('movies.synopsis')}</h2>
               <p className="text-gray-300 leading-relaxed mb-6">
-                {currentLanguage === 'kg' ? movie.synopsis_kg : movie.synopsis_ru}
+                {getMovieSynopsis(movie, currentLanguage)}
               </p>
               
               {/* Movie Details */}
@@ -314,69 +371,71 @@ const MovieDetails: React.FC = () => {
             <div>
               <h3 className="text-lg font-medium mb-4 text-gray-300">{t('movies.availableShowtimes')}</h3>
               
-              <div className="bg-gray-800/50 rounded-xl p-6">
-                <div className="mb-6">
-                  <h4 className="font-bold text-xl mb-4">{t('movies.standard')}</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {getShowtimes().map((showtime, index) => (
-                      <button
-                        key={index}
-                        onClick={() => showtime.available && handleBookTicket(showtime.time)}
-                        disabled={!showtime.available}
-                        className={`p-3 rounded-lg text-center transition-transform transform hover:scale-105 ${
-                          showtime.available 
-                            ? 'bg-gray-700 hover:bg-gray-600 text-white' 
-                            : 'bg-gray-700/50 text-gray-500 cursor-not-allowed'
-                        }`}
-                      >
-                        <span className="font-medium">{showtime.time}</span>
-                        {!showtime.available && (
-                          <div className="text-xs mt-1">{t('movies.soldOut')}</div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+              {loadingShowtimes ? (
+                <div className="flex justify-center py-12">
+                  <LoadingSpinner />
                 </div>
-                
-                <div>
-                  <h4 className="font-bold text-xl mb-4">{t('movies.vip')}</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {getShowtimes().slice(2).map((showtime, index) => (
-                      <button
-                        key={index}
-                        onClick={() => showtime.available && handleBookTicket(showtime.time)}
-                        disabled={!showtime.available}
-                        className={`p-3 rounded-lg text-center transition-transform transform hover:scale-105 ${
-                          showtime.available 
-                            ? 'bg-primary/80 hover:bg-primary text-white' 
-                            : 'bg-primary/30 text-gray-300 cursor-not-allowed'
-                        }`}
-                      >
-                        <span className="font-medium">{showtime.time}</span>
-                        {!showtime.available && (
-                          <div className="text-xs mt-1">{t('movies.soldOut')}</div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+              ) : showtimes.length === 0 ? (
+                <div className="bg-gray-800/50 rounded-xl p-6 text-center py-12">
+                  <p className="text-gray-400">{t('movies.noShowtimesAvailable')}</p>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-gray-800/50 rounded-xl p-6">
+                  {/* Standard Showtimes */}
+                  {groupedShowtimes().standard.length > 0 && (
+                    <div className="mb-6">
+                      <h4 className="font-bold text-xl mb-4">{t('movies.standard')}</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {groupedShowtimes().standard.map((showtime) => (
+                          <button
+                            key={showtime.id}
+                            onClick={() => handleBookTicket(showtime.id)}
+                            className="p-3 rounded-lg text-center transition-transform transform hover:scale-105 bg-gray-700 hover:bg-gray-600 text-white"
+                            disabled={bookingLoading}
+                          >
+                            <span className="font-medium">{formatTime(showtime.datetime)}</span>
+                            <div className="text-xs mt-1">{showtime.language === 'kg' ? t('movies.kyrgyz') : showtime.language === 'ru' ? t('movies.russian') : t('movies.original')}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* VIP Showtimes */}
+                  {groupedShowtimes().vip.length > 0 && (
+                    <div>
+                      <h4 className="font-bold text-xl mb-4">{t('movies.vip')}</h4>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {groupedShowtimes().vip.map((showtime) => (
+                          <button
+                            key={showtime.id}
+                            onClick={() => handleBookTicket(showtime.id)}
+                            className="p-3 rounded-lg text-center transition-transform transform hover:scale-105 bg-primary/80 hover:bg-primary text-white"
+                            disabled={bookingLoading}
+                          >
+                            <span className="font-medium">{formatTime(showtime.datetime)}</span>
+                            <div className="text-xs mt-1">{showtime.language === 'kg' ? t('movies.kyrgyz') : showtime.language === 'ru' ? t('movies.russian') : t('movies.original')}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               
               {/* Seat Legend */}
-              <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-gray-400">
-                <div className="flex items-center">
-                  <div className="w-4 h-4 bg-gray-700 rounded-sm mr-2"></div>
-                  <span>{t('movies.available')}</span>
+              {showtimes.length > 0 && (
+                <div className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-gray-400">
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-gray-700 rounded-sm mr-2"></div>
+                    <span>{t('movies.standard')}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-4 h-4 bg-primary/80 rounded-sm mr-2"></div>
+                    <span>{t('movies.vip')}</span>
+                  </div>
                 </div>
-                <div className="flex items-center">
-                  <div className="w-4 h-4 bg-primary/80 rounded-sm mr-2"></div>
-                  <span>{t('movies.vip')}</span>
-                </div>
-                <div className="flex items-center">
-                  <div className="w-4 h-4 bg-gray-700/50 rounded-sm mr-2"></div>
-                  <span>{t('movies.soldOut')}</span>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -428,7 +487,7 @@ const MovieDetails: React.FC = () => {
                 width="100%" 
                 height="100%" 
                 src={movie.trailer || `https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1`}
-                title={`${movie.title_ru} trailer`}
+                title={`${getMovieTitle(movie, currentLanguage)} trailer`}
                 frameBorder="0" 
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                 allowFullScreen

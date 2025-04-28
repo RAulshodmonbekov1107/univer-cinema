@@ -11,6 +11,7 @@ export interface Movie {
   language: string;
   duration: number;
   poster: string;
+  poster_url?: string;
   release_date: string;
   is_showing: boolean;
 }

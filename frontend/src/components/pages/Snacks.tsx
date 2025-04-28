@@ -268,28 +268,29 @@ const Snacks: React.FC = () => {
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h3 className="text-xl font-bold mb-4">{t('snacks.howToOrder')}</h3>
             <ol className="list-decimal pl-5 space-y-2 text-gray-700">
-              <li>Select the items you want to order</li>
-              <li>Click "Add to Order" for each item</li>
-              <li>Review your order in the cart</li>
-              <li>Proceed to checkout</li>
-              <li>Pick up your order at the counter using your order number</li>
+              <li>Выберите товары, которые хотите заказать.</li>
+              <li>Нажмите "Добавить в заказ" для каждого товара.</li>
+              <li>Просмотрите свой заказ в корзине.</li>
+              <li>Перейдите к оплате.</li>
+              <li>Заберите свой заказ на кассе, используя свой номер заказа.</li>
             </ol>
           </div>
           
           <div className="bg-white p-6 rounded-xl shadow-md">
             <h3 className="text-xl font-bold mb-4">{t('snacks.allergyInfo')}</h3>
             <p className="text-gray-700 mb-4">
-              Our food may contain or come into contact with common allergens such as:
+            
+            Наша еда может содержать или соприкасаться с распространёнными аллергенами, такими как:
             </p>
             <ul className="list-disc pl-5 space-y-1 text-gray-700">
-              <li>Peanuts and tree nuts</li>
-              <li>Wheat and gluten</li>
-              <li>Milk and dairy products</li>
-              <li>Eggs</li>
-              <li>Soy</li>
+              <li>Арахис и орехи</li>
+              <li>Пшеница и глютен</li>
+              <li>Молоко и молочные продукты</li>
+              <li>Яйца</li>
+              <li>Соя</li>
             </ul>
             <p className="mt-4 text-gray-700">
-              Please inform our staff of any allergies or dietary requirements.
+              Пожалуйста, сообщите нашему персоналу о любых аллергиях или диетических требованиях.
             </p>
           </div>
         </section>
