@@ -113,13 +113,18 @@
 .snack-image {
   height: 180px;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #1c1c2c;
 }
 
 .snack-image img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   transition: transform 0.3s;
+  padding: 10px;
 }
 
 .snack-card:hover .snack-image img {

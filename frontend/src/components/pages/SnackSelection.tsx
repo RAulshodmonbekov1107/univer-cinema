@@ -41,7 +41,7 @@ const SnackSelection: React.FC = () => {
       name: 'Small Popcorn',
       description: 'Classic buttered popcorn',
       price: 150,
-      image: '/images/snacks/small-popcorn.jpg',
+      image: '/images/snacks/classicpopcorn.png',
       categoryId: 1
     },
     {
@@ -49,7 +49,7 @@ const SnackSelection: React.FC = () => {
       name: 'Medium Popcorn',
       description: 'Classic buttered popcorn',
       price: 200,
-      image: '/images/snacks/medium-popcorn.jpg',
+      image: '/images/snacks/popcorn.png',
       categoryId: 1
     },
     {
@@ -57,7 +57,7 @@ const SnackSelection: React.FC = () => {
       name: 'Large Popcorn',
       description: 'Classic buttered popcorn',
       price: 250,
-      image: '/images/snacks/large-popcorn.jpg',
+      image: '/images/snacks/popcorn.png',
       categoryId: 1
     },
     {
@@ -65,7 +65,7 @@ const SnackSelection: React.FC = () => {
       name: 'Caramel Popcorn',
       description: 'Sweet caramel flavor',
       price: 280,
-      image: '/images/snacks/caramel-popcorn.jpg',
+      image: '/images/snacks/caramelpopcorn.png',
       categoryId: 1
     },
     {
@@ -73,7 +73,7 @@ const SnackSelection: React.FC = () => {
       name: 'Coca-Cola Small',
       description: 'Refreshing soda',
       price: 120,
-      image: '/images/snacks/coke-small.jpg',
+      image: '/images/snacks/coca-cola.png',
       categoryId: 2
     },
     {
@@ -81,47 +81,47 @@ const SnackSelection: React.FC = () => {
       name: 'Coca-Cola Medium',
       description: 'Refreshing soda',
       price: 180,
-      image: '/images/snacks/coke-medium.jpg',
+      image: '/images/snacks/coca-cola.png',
       categoryId: 2
     },
     {
       id: 7,
-      name: 'Mineral Water',
-      description: '500ml bottled water',
+      name: 'Tea with Fruits',
+      description: 'Refreshing tea with fruit flavors',
       price: 80,
-      image: '/images/snacks/water.jpg',
+      image: '/images/snacks/teawithfruits.png',
       categoryId: 2
     },
     {
       id: 8,
-      name: 'Nachos',
+      name: 'Nachos with Cheese',
       description: 'With cheese sauce',
       price: 220,
-      image: '/images/snacks/nachos.jpg',
+      image: '/images/snacks/nachoswithcheese.png',
       categoryId: 3
     },
     {
       id: 9,
-      name: 'Chocolate Bar',
-      description: 'Sweet treat',
+      name: 'Bomb Chocolate',
+      description: 'Sweet chocolate treat',
       price: 100,
-      image: '/images/snacks/chocolate.jpg',
+      image: '/images/snacks/bombchocolate.png',
       categoryId: 3
     },
     {
       id: 10,
-      name: 'Combo #1',
-      description: 'Large popcorn + 2 drinks',
+      name: 'Movie Combo',
+      description: 'Medium popcorn + drink',
       price: 400,
-      image: '/images/snacks/combo1.jpg',
+      image: '/images/snacks/moviecombo.png',
       categoryId: 4
     },
     {
       id: 11,
-      name: 'Combo #2',
-      description: 'Medium popcorn + drink + snack',
+      name: 'Family Combo',
+      description: 'Large popcorn + 2 drinks + nachos',
       price: 450,
-      image: '/images/snacks/combo2.jpg',
+      image: '/images/snacks/familycombo.png',
       categoryId: 4
     }
   ];
@@ -286,7 +286,17 @@ const SnackSelection: React.FC = () => {
             <div key={snack.id} className="snack-card">
               <div className="snack-image">
                 <img src={snack.image} alt={snack.name} onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/images/snacks/placeholder.jpg';
+                  console.log("Failed to load snack image:", snack.image);
+                  // Try with popcorn as fallback
+                  (e.target as HTMLImageElement).src = '/images/snacks/popcorn.png';
+                  
+                  // If that fails as well, use a text-based fallback
+                  (e.target as HTMLImageElement).onerror = function() {
+                    console.log("Failed to load fallback image");
+                    (e.target as HTMLImageElement).src = 'https://placehold.co/400x400/333/FFF?text=Snack';
+                    // Prevent infinite loop
+                    (e.target as HTMLImageElement).onerror = null;
+                  };
                 }} />
               </div>
               <div className="snack-details">
